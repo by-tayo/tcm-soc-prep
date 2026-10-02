@@ -1,6 +1,9 @@
 # TCM SOC Prep
 Preparing for the TCM PSAA cert exam
 
+*Two Days to complete assessment*
+*Two Days to write a professional report*
+
 ## SOC 101 Lab Environment
 
 Two-VM lab matching TCM Security's SOC-101 course setup, built on VMware Workstation Pro 17
