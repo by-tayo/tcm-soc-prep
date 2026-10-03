@@ -38,5 +38,6 @@ flowchart LR
 
 ### Design Notes
 
+- Created my own version of notes to get an understanding of the lectures.
 - Built on **VMware Workstation Pro 17** rather than VirtualBox networking concepts transfer directly; only the Virtual Network Editor's UI differs from VirtualBox's network manager.
 - Both VMs share one internal network so Snort/tcpdump on Ubuntu can observe traffic to/from the Windows endpoint.
