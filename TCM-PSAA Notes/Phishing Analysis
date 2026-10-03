@@ -1,0 +1,368 @@
+## Phishing Analysis
+
+Notes for SOC alert triage and email investigation.
+
+
+## Part 1 — The Psychological Levers
+
+Every phish works by exploiting a human decision shortcut, not a technical flaw. Identifying _which_ lever an email pulls is often faster than analyzing the headers, and it's what you write in the ticket to explain why a user clicked.
+
+|Lever|How it works|What it looks like in an email|
+|---|---|---|
+|**Authority**|People comply with perceived power|Spoofed CEO, IT department, HR, law enforcement, IRS|
+|**Urgency**|Time pressure suppresses verification|"Expires in 24 hours," "immediate action required," "final notice"|
+|**Fear**|Threat of loss or consequence|Account suspension, legal action, termination, security breach|
+|**Trust / Familiarity**|Impersonating a known brand or person|Microsoft 365 login, DocuSign, a coworker's display name|
+|**Scarcity**|Limited availability drives fast action|"Only 3 slots left," limited-time bonus|
+|**Social proof**|People follow the group|"Your team has already signed," shared-document notifications|
+|**Curiosity**|Unresolved information gap|"Here's that photo of you," unlabeled attachment, missed voicemail|
+|**Greed / Reward**|Promise of gain|Refund owed, bonus, gift card, crypto giveaway|
+|**Helpfulness / Reciprocity**|People want to assist, especially new hires|"Can you do me a quick favor?" — a classic BEC opener|
+
+**Analyst note:** most real phishing stacks two or three of these. The strongest combination is **Authority + Urgency + Fear** — an executive demanding something immediately with a consequence attached. If you see all three in one message, treat it as hostile until proven otherwise.
+
+---
+
+## Part 2 — Types of Phishing
+
+### Email Phishing (bulk / commodity)
+
+Mass-distributed, untargeted email sent to thousands of addresses hoping a small percentage respond.
+
+- **Example:** a generic "Your Microsoft 365 password expires today — click to keep your account active" blasted to a harvested address list.
+- **Primary levers:** Urgency, Fear, Trust (brand impersonation)
+- **Analyst indicators:** generic greeting ("Dear User"), sender domain mismatched from display name, link hostname unrelated to the brand, low sender reputation, same message seen across many recipients.
+
+### Spear Phishing
+
+Targeted at a specific person or small group, using researched personal details to raise credibility.
+
+- **Example:** an email to a named finance analyst referencing a real vendor the company uses and a real invoice number, asking them to review an attached statement.
+- **Primary levers:** Trust, Authority, sometimes Curiosity
+- **Analyst indicators:** correct names, titles, and internal references; very low send volume (often 1–5 recipients); often no malicious attachment on the first message — the opening email just builds rapport.
+
+### Whaling
+
+Spear phishing aimed specifically at executives or other high-value targets (C-suite, board, finance leads).
+
+- **Example:** a message to a CFO styled as outside legal counsel about a confidential acquisition, asking for a signed document.
+- **Primary levers:** Authority, Scarcity (confidentiality), Urgency
+- **Analyst indicators:** targets a small set of senior people; subject matter is legal, M&A, or regulatory; polished language with no typos; frequently references secrecy to discourage verification.
+
+### Business Email Compromise (BEC)
+
+A high-value subtype where the attacker impersonates (or has actually taken over) an internal executive or trusted vendor to redirect money or data. Often involves **no malicious link or attachment at all**, which is why it slips past filters.
+
+- **Example:** "Hi — I'm in meetings all day, can you handle a wire transfer before close of business? Send me the confirmation when it's done."
+- **Primary levers:** Authority, Urgency, Helpfulness
+- **Analyst indicators:** reply-to address differs from the From address; lookalike domain (`rn` for `m`, `.co` for `.com`); sender claims to be unreachable by phone; request involves payment details, gift cards, or payroll changes; message sent outside the sender's normal hours.
+
+### Clone Phishing
+
+Takes a legitimate email the victim already received and resends a near-identical copy with the link or attachment swapped for a malicious one.
+
+- **Example:** a resend of a real DocuSign notification the user got last week, now pointing at an attacker-controlled page.
+- **Primary levers:** Trust, Familiarity
+- **Analyst indicators:** near-duplicate of a previously delivered message; "RESENDING" or "UPDATED VERSION" in the subject; original thread headers missing or inconsistent.
+
+### Vishing (Voice Phishing)
+
+Conducted over a phone call, often using caller-ID spoofing and increasingly AI-generated voice.
+
+- **Example:** a call claiming to be the help desk, asking the user to read back an MFA code to "verify their identity" during a fake ticket.
+- **Primary levers:** Authority, Urgency, Helpfulness
+- **Analyst indicators:** user reports a call that preceded a suspicious login; MFA push approved shortly after an inbound call; caller pressured against hanging up to call back.
+
+### Smishing (SMS Phishing)
+
+Delivered by text message, where URLs are shortened by default and sender identity is hard to verify.
+
+- **Example:** "USPS: your package could not be delivered. Update your address here." sent to a personal phone.
+- **Primary levers:** Curiosity, Urgency
+- **Analyst indicators:** shortened URLs, non-corporate sender numbers, mobile-only landing pages, messages arriving outside business hours.
+
+### Quishing (QR Code Phishing)
+
+The malicious URL is embedded in a QR code image, so there is no clickable link for a mail gateway to scan.
+
+- **Example:** an email with an image reading "Scan to complete your MFA enrollment," with the code pointing at a credential harvesting page.
+- **Primary levers:** Authority, Urgency, Trust
+- **Analyst indicators:** image-heavy email with little text; sparse message body; scanning moves the victim to a _personal_ phone, outside corporate controls — which is the entire point.
+
+### Pharming
+
+Redirects users to a fake site by poisoning DNS or altering host files, rather than tricking them into clicking a link.
+
+- **Example:** a user types the bank's real URL and still lands on an attacker-controlled clone.
+- **Primary levers:** Trust (the victim did nothing wrong)
+- **Analyst indicators:** certificate warnings, DNS query anomalies, multiple users hitting the same unexpected IP for a known domain.
+
+### Angler Phishing
+
+Conducted over social media, usually by impersonating a brand's customer support account.
+
+- **Example:** a user tweets a complaint at their bank; a fake "support" account replies within minutes offering to help via DM.
+- **Primary levers:** Trust, Helpfulness, Urgency
+- **Analyst indicators:** newly created accounts, near-identical handles, support contact initiated by the brand rather than the customer.
+
+### Callback Phishing (TOAD — Telephone-Oriented Attack Delivery)
+
+An email with no link or attachment, just a phone number — designed to move the victim onto a call where the attacker talks them into installing remote access software.
+
+- **Example:** "Your subscription renews at $499 today. Call 1-800-XXX-XXXX to cancel."
+- **Primary levers:** Fear (unexpected charge), Urgency
+- **Analyst indicators:** plain-text email, no URLs, invoice or receipt framing, a phone number as the only call to action — specifically built to defeat link-scanning filters.
+
+### Consent / OAuth Phishing
+
+Tricks the user into granting a malicious third-party app permission to their real account. The attacker never needs the password, and **MFA does not stop it**.
+
+- **Example:** a fake "Document Viewer" app requesting permission to read mail and files, through a genuine Microsoft consent screen.
+- **Primary levers:** Trust (the consent prompt is real), Curiosity
+- **Analyst indicators:** new enterprise application registrations, unusual OAuth grants, mailbox access from an application identity rather than a user sign-in.
+
+### MFA Fatigue / Push Bombing
+
+The attacker already has valid credentials and spams push notifications until the user approves one out of annoyance or confusion.
+
+- **Example:** dozens of Authenticator prompts at 2am, sometimes paired with a vishing call saying "ignore those, but approve the next one."
+- **Primary levers:** Urgency, Authority (if paired with a call), exhaustion
+- **Analyst indicators:** high volume of failed/denied MFA attempts followed by one success; approval from an unusual location; sign-in immediately following a burst of denials.
+
+---
+
+## Part 3 — Triage Workflow
+
+A repeatable order of operations for a reported phish.
+
+1. **Preserve first.** Get the original message with full headers (`.eml` / `.msg`), not a screenshot or a forward.
+2. **Sender analysis.** Compare From, Reply-To, Return-Path, and the envelope sender. Check SPF, DKIM, and DMARC results. Look for lookalike domains and newly registered domains.
+3. **Content analysis.** Identify which psychological levers are in play. Note the specific ask — credentials, payment, data, or software install.
+4. **Link and attachment analysis.** Detonate in a sandbox, never on your own host. Resolve shortened URLs without visiting them. Hash attachments and check reputation.
+5. **Scope it.** Who else received it? Who clicked? Who submitted credentials? This is the question that turns an alert into an incident.
+6. **Contain.** Purge from mailboxes, block sender/domain/URL, reset credentials and revoke sessions for anyone who submitted, isolate hosts where anything executed.
+7. **Document and report.** IOCs extracted, users affected, actions taken, lessons for awareness training.
+
+---
+
+## Part 4 — Quick Reference
+
+|Type|Channel|Usually targets|Dominant lever|
+|---|---|---|---|
+|Email phishing|Email|Anyone, bulk|Urgency + Fear|
+|Spear phishing|Email|Named individual|Trust|
+|Whaling|Email|Executives|Authority|
+|BEC|Email|Finance / HR|Authority + Urgency|
+|Clone phishing|Email|Prior recipients|Familiarity|
+|Vishing|Phone|Help desk / users|Authority|
+|Smishing|SMS|Mobile users|Curiosity|
+|Quishing|Email (QR)|Office workers|Trust|
+|Pharming|DNS / network|Any user|Trust|
+|Angler|Social media|Customers|Helpfulness|
+|Callback / TOAD|Email + phone|Consumers, staff|Fear|
+|Consent / OAuth|Email → cloud app|Cloud users|Trust|
+|MFA fatigue|Push notification|Anyone with MFA|Exhaustion|
+
+---
+
+## Terms Worth Knowing
+
+- **IOC (Indicator of Compromise)** — sender addresses, URLs, domains, file hashes, IPs extracted from the phish and fed into detection tooling.
+- **Dwell time** — how long an attacker had access before detection. Phishing is the most common initial access vector, so phishing response time directly affects this.
+- **Credential harvesting** — the goal of most phishing: a fake login page capturing username and password.
+- **Payload** — what the phish is actually delivering: a credential page, malware, or a request for action.
+- **Pretext** — the fabricated story justifying the request. Naming the pretext explicitly in a ticket makes the writeup much clearer.
+
+
+
+#### **Phishing Case Studies:**
+
+- [https://abnormalsecurity.com/blog/colonial-pipeline-attack-phishing-email-likely-the-culprit](https://abnormalsecurity.com/blog/colonial-pipeline-attack-phishing-email-likely-the-culprit)
+- [https://www.secureworld.io/industry-news/hedge-fund-closes-after-bec-cyber-attac](https://www.secureworld.io/industry-news/hedge-fund-closes-after-bec-cyber-attac)
+- [https://krebsonsecurity.com/2015/08/tech-firm-ubiquiti-suffers-46m-cyberheist/](https://krebsonsecurity.com/2015/08/tech-firm-ubiquiti-suffers-46m-cyberheist)
+- [https://en.wikipedia.org/wiki/2015_Ukraine_power_grid_hack](https://en.wikipedia.org/wiki/2015_Ukraine_power_grid_hack)
+
+
+# Email Fundamentals
+
+Notes for phishing analysis and email investigation.
+
+---
+
+## Mail Agents
+
+Four components move a message from sender to recipient. Knowing which one produced a given header line is what lets you read a header stack.
+
+|Agent|Full name|What it does|
+|---|---|---|
+|**MUA**|Mail User Agent|The client the human uses — Outlook, Thunderbird, Gmail web, Apple Mail. Composes and reads mail.|
+|**MSA**|Mail Submission Agent|Accepts outbound mail _from authenticated users_ and hands it to an MTA. Listens on port 587.|
+|**MTA**|Mail Transfer Agent|The server that relays mail between domains — Postfix, Exim, Microsoft Exchange, Sendmail. Speaks SMTP to other MTAs.|
+|**MDA**|Mail Delivery Agent|Takes the message from the final MTA and files it into the recipient's mailbox. Applies filters and quotas.|
+
+**The chain:**
+
+```
+Sender MUA → MSA → MTA → (internet) → MTA → MDA → Mailbox → Recipient MUA
+```
+
+**Analyst note:** every MTA that touches the message adds a `Received:` header. The chain of those headers is the message's travel history, and it's the single most useful thing in a phishing investigation.
+
+---
+
+## Email Protocols
+
+### Sending
+
+|Protocol|Port|Encryption|Use|
+|---|---|---|---|
+|SMTP|25|Opportunistic STARTTLS|**MTA to MTA** relay. Often blocked outbound by ISPs to limit spam.|
+|SMTP Submission|587|STARTTLS|**Client to server** submission, authenticated. The modern standard.|
+|SMTPS|465|Implicit TLS|Client submission with TLS from the first byte.|
+
+**SMTP is the only protocol that _sends_.** POP3 and IMAP only retrieve.
+
+SMTP was designed in 1982 with **no authentication of the sender address**. That single design decision is why phishing works and why SPF, DKIM, and DMARC had to be bolted on later.
+
+### Retrieving
+
+|Protocol|Port|Secure port|Behavior|
+|---|---|---|---|
+|**POP3**|110|995|Downloads mail to one device, typically deletes from server. No sync.|
+|**IMAP**|143|993|Leaves mail on the server, syncs folders and read state across devices.|
+
+**Analyst note:** POP3 access in logs for a user who normally uses IMAP/OWA is worth a look. Attackers favor legacy protocols because older implementations often bypass modern conditional access and MFA.
+
+### Authentication (bolted on later)
+
+|Mechanism|What it checks|Where it appears|
+|---|---|---|
+|**SPF**|Is the sending IP authorized to send for the _envelope sender's_ domain?|DNS TXT record|
+|**DKIM**|Cryptographic signature proving the message wasn't altered and came from the signing domain|`DKIM-Signature:` header, public key in DNS|
+|**DMARC**|Policy tying SPF/DKIM results to the **From: header** domain, and telling receivers what to do on failure|DNS TXT at `_dmarc.domain.com`|
+
+**The alignment concept is the key one.** SPF validates the _envelope_ sender. DKIM validates the _signing_ domain. Neither one, by itself, says anything about the `From:` address the user actually sees. DMARC closes that gap by requiring the authenticated domain to **align** with the visible `From:` domain.
+
+So a message can pass SPF and still be a phish — the attacker just passed SPF for _their own_ domain while displaying yours in the From line. That's why `dmarc=fail` matters more than `spf=pass`.
+
+---
+
+## Email Addresses
+
+### Anatomy
+
+```
+tania.ortiz+alerts@mail.example.com
+└────┬────┘ └─┬─┘ └───────┬───────┘
+ local part  tag        domain
+```
+
+- **Local part** — before the `@`. Technically case-sensitive per RFC, though virtually all providers treat it as case-insensitive.
+- **Domain** — after the `@`. Determines where mail routes via MX records.
+- **Subaddressing / plus addressing** — `user+tag@` routes to `user@` while preserving the tag. Useful for tracking where an address leaked; also used by attackers to generate variations that bypass naive blocklists.
+
+### Envelope vs. Header — the critical distinction
+
+Email works like postal mail: there's an **envelope** and there's a **letter inside**. They don't have to match.
+
+||Set by|Visible to user?|Field|
+|---|---|---|---|
+|**Envelope**|SMTP conversation|No|`MAIL FROM:` and `RCPT TO:`|
+|**Header**|Message content|Yes|`From:`, `To:`, `Cc:`|
+
+The mail server routes using the **envelope**. The user reads the **header**. An attacker controls both independently, which is the foundation of nearly all sender spoofing.
+
+The envelope sender gets recorded at delivery as the **`Return-Path:`** header. **If `Return-Path:` and `From:` disagree, that's your first real signal.** It isn't always malicious — mailing lists and marketing platforms do it legitimately — but it always deserves a second look.
+
+### Spoofing techniques to recognize
+
+- **Display name spoofing** — `"IT Help Desk" <attacker@random-domain.com>`. Mobile clients often show _only_ the display name, which is why this still works so well.
+- **Lookalike / typosquatted domains** — `paypa1.com`, `rnicrosoft.com` (`rn` reads as `m`), `company-support.com`.
+- **Homoglyph / IDN attacks** — Unicode characters that render identically to Latin ones. These appear in headers as **punycode**, starting `xn--`. Seeing `xn--` in a domain is almost always worth investigating.
+- **Subdomain deception** — `microsoft.com.login-verify.ru`. The real domain is always the rightmost two labels before the TLD; everything left of that is attacker-controlled.
+- **Cousin domains** — legitimately registered, authentication-passing domains that merely _look_ related. These pass SPF, DKIM, and DMARC cleanly, because the attacker owns them.
+
+---
+
+## Email Headers
+
+Headers are metadata prepended to the message body. Everything above the first blank line is header; everything below is body.
+
+### Reading the Received chain
+
+**Received headers stack newest on top.** Each server prepends its own as the message passes through. To trace the real path, **read from the bottom up** — the bottom-most `Received:` is the earliest hop, closest to the true origin.
+
+```
+Received: from mx.recipient.com ...        ← last hop (newest)
+Received: from relay.middle.net ...        ← middle hop
+Received: from unknown-host [203.0.113.5]  ← first hop (oldest, origin)
+```
+
+What to extract from each hop: the sending IP, the hostname the sender _claimed_ in HELO/EHLO, the hostname reverse DNS actually resolves to, and the timestamp.
+
+**Red flags in the chain:**
+
+- HELO/EHLO hostname doesn't match the reverse DNS of the connecting IP
+- A gap or inconsistency in timestamps (hops out of chronological order)
+- Originating IP geolocates somewhere inconsistent with the claimed sender
+- Forged `Received:` headers injected at the bottom to fake an origin — **only the headers added by servers you control are fully trustworthy**, since anything upstream could have been fabricated by the attacker
+
+That last point matters more than people expect. Trust the headers your own infrastructure wrote. Treat everything below them as a claim.
+
+### Headers that matter in triage
+
+|Header|What it tells you|
+|---|---|
+|`From:`|Displayed sender. Trivially spoofable.|
+|`Return-Path:`|Envelope sender, recorded at delivery. Where bounces go. Compare against `From:`.|
+|`Reply-To:`|Where a reply is actually addressed. **A mismatch here is a classic BEC indicator.**|
+|`Received:`|The hop-by-hop path. Read bottom-up.|
+|`Message-ID:`|Unique identifier, usually `<random@sending-domain>`. A domain here that doesn't match the sender is suspicious.|
+|`Authentication-Results:`|Your own mail system's SPF, DKIM, and DMARC verdicts. High-trust — your infrastructure wrote it.|
+|`DKIM-Signature:`|Contains `d=` (signing domain) and `s=` (selector). Check whether `d=` aligns with `From:`.|
+|`Date:`|Claimed send time. Compare against Received timestamps.|
+|`Subject:`|Content, but also check for encoded text (`=?UTF-8?B?`) hiding the real subject.|
+|`Content-Type:`|MIME structure — `multipart/mixed` means attachments present.|
+|`X-Mailer:` / `User-Agent:`|Sending client. Bulk mailers and scripts often leave distinctive values here.|
+|`X-Originating-IP:`|Original sender IP, when the provider includes it.|
+|`List-Unsubscribe:`|Present on legitimate bulk mail; its _absence_ on something claiming to be a newsletter is a signal.|
+
+### MIME
+
+Email was originally plain ASCII text only. **MIME** (Multipurpose Internet Mail Extensions) is what allows attachments, HTML, and non-English character sets.
+
+- `Content-Type: multipart/mixed` — message has attachments
+- `Content-Type: multipart/alternative` — plain text and HTML versions of the same content
+- `boundary=` — the delimiter string separating each MIME part
+- `Content-Transfer-Encoding: base64` — binary content encoded as text; this is how attachments travel
+
+**Analyst note:** HTML email lets the displayed link text differ completely from the actual href. `Click here to verify` pointing somewhere entirely different is the oldest trick in the book and still the most common. Always read the raw href, never the rendered text.
+
+---
+
+## Quick Investigation Checklist
+
+1. Get the **original** message with full headers — `.eml` or `.msg`, never a screenshot or forward.
+2. Read `Authentication-Results:` first. SPF, DKIM, DMARC verdicts from your own system.
+3. Compare `From:` vs `Return-Path:` vs `Reply-To:`. Any disagreement gets explained.
+4. Read `Received:` bottom-up. Note the originating IP and whether HELO matches reverse DNS.
+5. Check the sender domain: registration age, lookalike patterns, `xn--` punycode.
+6. Inspect raw hrefs, not displayed link text. Resolve shorteners without visiting.
+7. Note MIME structure and any attachments — hash them before detonating.
+8. Record every IOC extracted: sender address, sending IP, URLs, domains, file hashes.
+
+---
+
+## Terms
+
+- **Envelope** — the SMTP-level addressing used for routing; invisible to the recipient.
+- **Header** — the message metadata the recipient's client displays.
+- **Hop** — one server-to-server transfer, recorded as one `Received:` header.
+- **HELO/EHLO** — the greeting where a sending server identifies itself. Self-reported, therefore unverified.
+- **Reverse DNS (PTR)** — maps an IP back to a hostname. Compare against the HELO claim.
+- **Open relay** — a misconfigured MTA that forwards mail for anyone. Abused for spam and spoofing.
+- **Alignment** — DMARC's requirement that the authenticated domain match the visible `From:` domain.
+
+
+
+
